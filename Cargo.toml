@@ -1,0 +1,15 @@
+[package]
+name = "insta-telegram-dl"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+telegram-bot2 = {version = "0.3.7", features = ["full"]}
+tokio = "1.25.0"
+async-trait = "0.1.64"
+pretty_env_logger = "0.4.0"
+confy = "0.5.1"
+serde_derive = "1.0.152"
+serde = "1.0.152"
