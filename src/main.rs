@@ -50,7 +50,7 @@ async fn handler(message: &Message, bot: &Bot) -> Result<(), ()> {
     let current_config: MyConfig = confy::load("insta-telegram-dl", None).unwrap();
     let chat_id = ChatId::from(message.chat.id);
     let user_state = get_user_state(&chat_id, &current_config);
-    if true {//user_state == UserState::NotAllowed {
+    if user_state == UserState::NotAllowed {
         let error_response = "You are not allowed to use this bot. Please /request_access to continue.";
         bot.send_message(SendMessageBuilder::new(chat_id, error_response.to_string()).build()).await.unwrap();
     } else {
@@ -68,7 +68,6 @@ async fn request_access(bot: &Bot, chat_id: ChatId) -> Result<(), ()> {
     };
     let chat = bot.get_chat(GetChatBuilder::new(chat_id.clone()).build()).await.unwrap();
 
-    //bot.send_contact(SendContactBuilder::new(chat_id.clone(), contact.)).await.unwrap();
     bot.send_message(SendMessageBuilder::new(current_config.admin_user, format!("User {} {} ({}) [{:?}] wants to get access", chat.first_name.unwrap_or_default(), chat.last_name.unwrap_or_default(), chat.username.unwrap_or_default(), chat_id.clone())).build()).await.unwrap();
     bot.send_message(SendMessageBuilder::new(chat_id.clone(), format!("You are user {:?}, request has been submitted", chat_id)).build()).await.unwrap();
     Ok(())
