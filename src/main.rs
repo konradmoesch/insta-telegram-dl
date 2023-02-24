@@ -1,4 +1,5 @@
 use std::time::Duration;
+use instagram_scraper_rs::{InstagramScraper, Post};
 
 use telegram_bot2::{Bot, bot, BotBuilder, Builder, command, commands, handler, handlers};
 use telegram_bot2::log::info;
@@ -6,7 +7,7 @@ use telegram_bot2::models::{ChatId, GetChatBuilder, Message, SendMessageBuilder}
 
 use serde_derive::{Deserialize, Serialize};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 enum UserState {
     Allowed,
     Admin,
@@ -19,6 +20,24 @@ struct MyConfig {
     tg_api_key: String,
     admin_user: ChatId,
     allowed_users: Vec<ChatId>,
+}
+
+async fn scrape_instagram(username_to_scrape: &str) -> Vec<Post> {
+    let username = std::env::var("INSTAGRAM_USERNAME").ok();
+    let password = std::env::var("INSTAGRAM_PASSWORD").ok();
+    let mut scraper = InstagramScraper::default();
+    if let (Some(username), Some(password)) = (username, password) {
+        println!("authenticating with username {}", username);
+        scraper = scraper.authenticate_with_login(username, password);
+    }
+    scraper.login().await.unwrap();
+
+    let user = scraper.scrape_userinfo(username_to_scrape).await.unwrap();
+    // collect user's stories and up to 10 highlighted stories
+    //let stories = scraper.scrape_user_stories(&user.id, 10).await.unwrap();
+    // collect last 10 posts
+    let posts = scraper.scrape_posts(&user.id, 10).await.unwrap();
+    posts
 }
 
 #[bot]
@@ -54,7 +73,11 @@ async fn handler(message: &Message, bot: &Bot) -> Result<(), ()> {
         let error_response = "You are not allowed to use this bot. Please /request_access to continue.";
         bot.send_message(SendMessageBuilder::new(chat_id, error_response.to_string()).build()).await.unwrap();
     } else {
-        bot.send_message(SendMessageBuilder::new(chat_id, message.text.clone().unwrap()).build()).await.unwrap();
+        bot.send_message(SendMessageBuilder::new(chat_id.clone(), message.text.clone().unwrap()).build()).await.unwrap();
+        let posts = scrape_instagram(message.text.clone().unwrap().as_str()).await;
+        for post in posts {
+            bot.send_message(SendMessageBuilder::new(chat_id.clone(), post.display_url).build()).await.unwrap();
+        }
     }
     Ok(())
 }
