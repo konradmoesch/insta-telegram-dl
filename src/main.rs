@@ -1,11 +1,10 @@
 use std::time::Duration;
-use instagram_scraper_rs::{InstagramScraper, Post};
 
+use instagram_scraper_rs::{InstagramScraper, InstagramScraperResult, Post};
+use serde_derive::{Deserialize, Serialize};
 use telegram_bot2::{Bot, bot, BotBuilder, Builder, command, commands, handler, handlers};
 use telegram_bot2::log::info;
 use telegram_bot2::models::{ChatId, GetChatBuilder, Message, SendMessageBuilder};
-
-use serde_derive::{Deserialize, Serialize};
 
 #[derive(Debug, PartialEq)]
 enum UserState {
@@ -22,7 +21,7 @@ struct MyConfig {
     allowed_users: Vec<ChatId>,
 }
 
-async fn scrape_instagram(username_to_scrape: &str) -> Vec<Post> {
+async fn scrape_instagram(username_to_scrape: &str) -> Option<Vec<Post>> {
     let username = std::env::var("INSTAGRAM_USERNAME").ok();
     let password = std::env::var("INSTAGRAM_PASSWORD").ok();
     let mut scraper = InstagramScraper::default();
@@ -32,12 +31,17 @@ async fn scrape_instagram(username_to_scrape: &str) -> Vec<Post> {
     }
     scraper.login().await.unwrap();
 
-    let user = scraper.scrape_userinfo(username_to_scrape).await.unwrap();
+    let user = scraper.scrape_userinfo(username_to_scrape).await;
     // collect user's stories and up to 10 highlighted stories
     //let stories = scraper.scrape_user_stories(&user.id, 10).await.unwrap();
     // collect last 10 posts
-    let posts = scraper.scrape_posts(&user.id, 10).await.unwrap();
-    posts
+    match user {
+        Ok(u) => {
+            let posts = scraper.scrape_posts(&u.id, 10).await.unwrap();
+            Some(posts)
+        }
+        Err(_) => { None }
+    }
 }
 
 #[bot]
@@ -74,9 +78,16 @@ async fn handler(message: &Message, bot: &Bot) -> Result<(), ()> {
         bot.send_message(SendMessageBuilder::new(chat_id, error_response.to_string()).build()).await.unwrap();
     } else {
         bot.send_message(SendMessageBuilder::new(chat_id.clone(), message.text.clone().unwrap()).build()).await.unwrap();
-        let posts = scrape_instagram(message.text.clone().unwrap().as_str()).await;
-        for post in posts {
-            bot.send_message(SendMessageBuilder::new(chat_id.clone(), post.display_url).build()).await.unwrap();
+        let posts_option = scrape_instagram(message.text.clone().unwrap().as_str()).await;
+        match posts_option {
+            None => {
+                bot.send_message(SendMessageBuilder::new(chat_id.clone(), "User not found".to_string()).build()).await.unwrap();
+            }
+            Some(posts) => {
+                for post in posts {
+                    bot.send_message(SendMessageBuilder::new(chat_id.clone(), post.display_url).build()).await.unwrap();
+                }
+            }
         }
     }
     Ok(())
@@ -115,11 +126,11 @@ async fn allow(bot: &Bot, chat_id: ChatId, id_to_be_allowed: i64) -> Result<(), 
                     bot.send_message(SendMessageBuilder::new(current_config.admin_user, format!("An error occurred trying to add user {} to the allowlist: {:?}", id_to_be_allowed, e)).build()).await.unwrap();
                 }
             }
-        },
+        }
         _ => {
             let error_response = "You are not allowed to use this command.";
             bot.send_message(SendMessageBuilder::new(chat_id, error_response.to_string()).build()).await.unwrap();
-        },
+        }
     }
     Ok(())
 }
