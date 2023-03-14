@@ -1,3 +1,4 @@
+use std::num::ParseIntError;
 use std::time::Duration;
 
 use instagram_scraper_rs::{InstagramScraper, InstagramScraperResult, Post};
@@ -21,7 +22,7 @@ struct MyConfig {
     allowed_users: Vec<ChatId>,
 }
 
-async fn scrape_instagram(username_to_scrape: &str) -> Option<Vec<Post>> {
+async fn scrape_instagram(username_to_scrape: &str, number_to_scrape: usize) -> Option<Vec<Post>> {
     let username = std::env::var("INSTAGRAM_USERNAME").ok();
     let password = std::env::var("INSTAGRAM_PASSWORD").ok();
     let mut scraper = InstagramScraper::default();
@@ -37,7 +38,7 @@ async fn scrape_instagram(username_to_scrape: &str) -> Option<Vec<Post>> {
     // collect last 10 posts
     match user {
         Ok(u) => {
-            let posts = scraper.scrape_posts(&u.id, 10).await.unwrap();
+            let posts = scraper.scrape_posts(&u.id, number_to_scrape).await.unwrap();
             Some(posts)
         }
         Err(_) => { None }
@@ -77,15 +78,28 @@ async fn handler(message: &Message, bot: &Bot) -> Result<(), ()> {
         let error_response = "You are not allowed to use this bot. Please /request_access to continue.";
         bot.send_message(SendMessageBuilder::new(chat_id, error_response.to_string()).build()).await.unwrap();
     } else {
-        bot.send_message(SendMessageBuilder::new(chat_id.clone(), message.text.clone().unwrap()).build()).await.unwrap();
-        let posts_option = scrape_instagram(message.text.clone().unwrap().as_str()).await;
-        match posts_option {
-            None => {
-                bot.send_message(SendMessageBuilder::new(chat_id.clone(), "User not found".to_string()).build()).await.unwrap();
-            }
-            Some(posts) => {
-                for post in posts {
-                    bot.send_message(SendMessageBuilder::new(chat_id.clone(), post.display_url).build()).await.unwrap();
+        let incoming_text = message.text.clone().unwrap_or_default();
+        let mut incoming_words = incoming_text.split_whitespace();
+        if incoming_words.clone().count() > 2 {
+            bot.send_message(SendMessageBuilder::new(chat_id.clone(), "invalid number of arguments: usage: [username] ([number_to_scrape]=10)".to_string()).build()).await.unwrap();
+        } else {
+            let username_to_scrape = incoming_words.next().unwrap();
+            let count_to_scrape = match incoming_words.next().unwrap_or("10").parse::<usize>() {
+                Ok(c) => {c}
+                Err(_) => {
+                    bot.send_message(SendMessageBuilder::new(chat_id.clone(), "invalid number_to_scrape, using default (10)".to_string()).build()).await.unwrap();
+                    10
+                }
+            };
+            let posts_option = scrape_instagram(username_to_scrape, count_to_scrape).await;
+            match posts_option {
+                None => {
+                    bot.send_message(SendMessageBuilder::new(chat_id.clone(), "User not found".to_string()).build()).await.unwrap();
+                }
+                Some(posts) => {
+                    for post in posts {
+                        bot.send_message(SendMessageBuilder::new(chat_id.clone(), post.display_url).build()).await.unwrap();
+                    }
                 }
             }
         }
